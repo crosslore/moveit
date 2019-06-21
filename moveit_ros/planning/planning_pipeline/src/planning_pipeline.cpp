@@ -140,16 +140,16 @@ void planning_pipeline::PlanningPipeline::configure()
     }
 
     if (adapter_plugin_loader_)
-      for (std::size_t i = 0; i < adapter_plugin_names_.size(); ++i)
+      for (const std::string& adapter_plugin_name : adapter_plugin_names_)
       {
         planning_request_adapter::PlanningRequestAdapterConstPtr ad;
         try
         {
-          ad = adapter_plugin_loader_->createUniqueInstance(adapter_plugin_names_[i]);
+          ad = adapter_plugin_loader_->createUniqueInstance(adapter_plugin_name);
         }
         catch (pluginlib::PluginlibException& ex)
         {
-          ROS_ERROR_STREAM("Exception while loading planning adapter plugin '" << adapter_plugin_names_[i]
+          ROS_ERROR_STREAM("Exception while loading planning adapter plugin '" << adapter_plugin_name
                                                                                << "': " << ex.what());
         }
         if (ad)
@@ -158,10 +158,10 @@ void planning_pipeline::PlanningPipeline::configure()
     if (!ads.empty())
     {
       adapter_chain_.reset(new planning_request_adapter::PlanningRequestAdapterChain());
-      for (std::size_t i = 0; i < ads.size(); ++i)
+      for (planning_request_adapter::PlanningRequestAdapterConstPtr& ad : ads)
       {
-        ROS_INFO_STREAM("Using planning request adapter '" << ads[i]->getDescription() << "'");
-        adapter_chain_->addAdapter(ads[i]);
+        ROS_INFO_STREAM("Using planning request adapter '" << ad->getDescription() << "'");
+        adapter_chain_->addAdapter(ad);
       }
     }
   }
@@ -229,8 +229,8 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
       if (!adapter_added_state_index.empty())
       {
         std::stringstream ss;
-        for (std::size_t i = 0; i < adapter_added_state_index.size(); ++i)
-          ss << adapter_added_state_index[i] << " ";
+        for (std::size_t added_index : adapter_added_state_index)
+          ss << added_index << " ";
         ROS_INFO("Planning adapters have added states at index positions: [ %s]", ss.str().c_str());
       }
     }
@@ -263,8 +263,8 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
         for (std::size_t i = 0; i < index.size() && !problem; ++i)
         {
           bool found = false;
-          for (std::size_t j = 0; j < adapter_added_state_index.size(); ++j)
-            if (index[i] == adapter_added_state_index[j])
+          for (std::size_t added_index : adapter_added_state_index)
+            if (index[i] == added_index)
             {
               found = true;
               break;
@@ -283,8 +283,8 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
 
             // display error messages
             std::stringstream ss;
-            for (std::size_t i = 0; i < index.size(); ++i)
-              ss << index[i] << " ";
+            for (std::size_t it : index)
+              ss << it << " ";
             ROS_ERROR_STREAM("Computed path is not valid. Invalid states at index locations: [ "
                              << ss.str() << "] out of " << state_count
                              << ". Explanations follow in command line. Contacts are published on "
@@ -292,10 +292,10 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
 
             // call validity checks in verbose mode for the problematic states
             visualization_msgs::MarkerArray arr;
-            for (std::size_t i = 0; i < index.size(); ++i)
+            for (std::size_t it : index)
             {
               // check validity with verbose on
-              const robot_state::RobotState& robot_state = res.trajectory_->getWayPoint(index[i]);
+              const robot_state::RobotState& robot_state = res.trajectory_->getWayPoint(it);
               planning_scene->isStateValid(robot_state, req.path_constraints, req.group_name, true);
 
               // compute the contacts if any
@@ -337,6 +337,24 @@ bool planning_pipeline::PlanningPipeline::generatePlan(const planning_scene::Pla
     res.trajectory_->getRobotTrajectoryMsg(disp.trajectory[0]);
     robot_state::robotStateToRobotStateMsg(res.trajectory_->getFirstWayPoint(), disp.trajectory_start);
     display_path_publisher_.publish(disp);
+  }
+
+  if (!solved)
+  {
+    // This should alert the user if planning failed because of contradicting constraints.
+    // Could be checked more thoroughly, but it is probably not worth going to that length.
+    bool stacked_constraints = false;
+    if (req.path_constraints.position_constraints.size() > 1 || req.path_constraints.orientation_constraints.size() > 1)
+      stacked_constraints = true;
+    for (auto constraint : req.goal_constraints)
+    {
+      if (constraint.position_constraints.size() > 1 || constraint.orientation_constraints.size() > 1)
+        stacked_constraints = true;
+    }
+    if (stacked_constraints)
+      ROS_WARN("More than one constraint is set. If your move_group does not have multiple end effectors/arms, this is "
+               "unusual. Are you using a move_group_interface and forgetting to call clearPoseTargets() or "
+               "equivalent?");
   }
 
   return solved && valid;

@@ -566,7 +566,7 @@ bool ConfigurationFilesWidget::loadGenFiles()
 bool ConfigurationFilesWidget::checkDependencies()
 {
   QStringList dependencies;
-  bool requiredActions = false;
+  bool required_actions = false;
 
   // Check that at least 1 planning group exists
   if (config_data_->srdf_->groups_.empty())
@@ -597,18 +597,18 @@ bool ConfigurationFilesWidget::checkDependencies()
   {
     // There is no name or it consists of whitespaces only
     dependencies << "<b>No author name added</b>";
-    requiredActions = true;
+    required_actions = true;
   }
 
   // Check that email information is filled
-  QRegExp mailRegex("\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,4}\\b");
-  mailRegex.setCaseSensitivity(Qt::CaseInsensitive);
-  mailRegex.setPatternSyntax(QRegExp::RegExp);
-  QString testEmail = QString::fromStdString(config_data_->author_email_);
-  if (!mailRegex.exactMatch(testEmail))
+  QRegExp mail_regex("\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,4}\\b");
+  mail_regex.setCaseSensitivity(Qt::CaseInsensitive);
+  mail_regex.setPatternSyntax(QRegExp::RegExp);
+  QString test_email = QString::fromStdString(config_data_->author_email_);
+  if (!mail_regex.exactMatch(test_email))
   {
     dependencies << "<b>No valid email address added</b>";
-    requiredActions = true;
+    required_actions = true;
   }
 
   // Display all accumumlated errors:
@@ -616,7 +616,7 @@ bool ConfigurationFilesWidget::checkDependencies()
   {
     // Create a dependency message
     QString dep_message;
-    if (!requiredActions)
+    if (!required_actions)
     {
       dep_message = "Some setup steps have not been completed. None of the steps are required, but here is a reminder "
                     "of what was not filled in, just in case something was forgotten:<br /><ul>";
@@ -632,7 +632,7 @@ bool ConfigurationFilesWidget::checkDependencies()
       dep_message.append("<li>").append(dependencies.at(i)).append("</li>");
     }
 
-    if (!requiredActions)
+    if (!required_actions)
     {
       dep_message.append("</ul><br/>Press Ok to continue generating files.");
       if (QMessageBox::question(this, "Incomplete MoveIt! Setup Assistant Steps", dep_message,
@@ -758,9 +758,9 @@ bool ConfigurationFilesWidget::checkGenFiles()
 
   // Check all old file's modification time
   bool found_modified = false;
-  for (std::size_t i = 0; i < gen_files_.size(); ++i)
+  for (GenerateFile& gen_file : gen_files_)
   {
-    GenerateFile* file = &gen_files_[i];
+    GenerateFile* file = &gen_file;
 
     fs::path file_path = config_data_->appendPaths(config_data_->config_pkg_path_, file->rel_path_);
 
@@ -949,9 +949,9 @@ bool ConfigurationFilesWidget::generatePackage()
   // Begin to create files and folders ----------------------------------------------------------------------
   std::string absolute_path;
 
-  for (std::size_t i = 0; i < gen_files_.size(); ++i)
+  for (GenerateFile& gen_file : gen_files_)
   {
-    GenerateFile* file = &gen_files_[i];
+    GenerateFile* file = &gen_file;
 
     // Check if we should skip this file
     if (!file->generate_)
@@ -1111,12 +1111,11 @@ void ConfigurationFilesWidget::loadTemplateStrings()
   else
   {
     std::stringstream controllers;
-    for (std::vector<ROSControlConfig>::iterator controller_it = config_data_->getROSControllers().begin();
-         controller_it != config_data_->getROSControllers().end(); ++controller_it)
+    for (ROSControlConfig& controller : config_data_->getROSControllers())
     {
       // Check if the controller belongs to controller_list namespace
-      if (controller_it->type_ != "FollowJointTrajectory")
-        controllers << controller_it->name_ << " ";
+      if (controller.type_ != "FollowJointTrajectory")
+        controllers << controller.name_ << " ";
     }
     addTemplateString("[ROS_CONTROLLERS]", controllers.str());
   }
@@ -1170,9 +1169,9 @@ bool ConfigurationFilesWidget::copyTemplate(const std::string& template_path, co
   template_stream.close();
 
   // Replace keywords in string ------------------------------------------------------------
-  for (std::size_t i = 0; i < template_strings_.size(); ++i)
+  for (std::pair<std::string, std::string>& it : template_strings_)
   {
-    boost::replace_all(template_string, template_strings_[i].first, template_strings_[i].second);
+    boost::replace_all(template_string, it.first, it.second);
   }
 
   // Save string to new location -----------------------------------------------------------

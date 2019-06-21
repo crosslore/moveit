@@ -240,17 +240,17 @@ bool KDLKinematicsPlugin::initialize(const moveit::core::RobotModel& robot_model
       }
     }
   }
-  for (std::size_t i = 0; i < mimic_joints_.size(); ++i)
+  for (JointMimic& mimic_joint : mimic_joints_)
   {
-    if (!mimic_joints_[i].active)
+    if (!mimic_joint.active)
     {
       const robot_model::JointModel* joint_model =
-          joint_model_group_->getJointModel(mimic_joints_[i].joint_name)->getMimic();
-      for (std::size_t j = 0; j < mimic_joints_.size(); ++j)
+          joint_model_group_->getJointModel(mimic_joint.joint_name)->getMimic();
+      for (JointMimic& mimic_joint_recal : mimic_joints_)
       {
-        if (mimic_joints_[j].joint_name == joint_model->getName())
+        if (mimic_joint_recal.joint_name == joint_model->getName())
         {
-          mimic_joints_[i].map_index = mimic_joints_[j].map_index;
+          mimic_joint.map_index = mimic_joint_recal.map_index;
         }
       }
     }
@@ -429,6 +429,7 @@ bool KDLKinematicsPlugin::searchPositionIK(const geometry_msgs::Pose& ik_pose, c
   return false;
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 int KDLKinematicsPlugin::CartToJnt(KDL::ChainIkSolverVelMimicSVD& ik_solver, const KDL::JntArray& q_init,
                                    const KDL::Frame& p_in, KDL::JntArray& q_out, const unsigned int max_iter,
                                    const Eigen::VectorXd& joint_weights, const Twist& cartesian_weights) const

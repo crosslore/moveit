@@ -51,17 +51,17 @@ moveit_msgs::Constraints mergeConstraints(const moveit_msgs::Constraints& first,
 
   // add all joint constraints that are in first but not in second
   // and merge joint constraints that are for the same joint
-  for (std::size_t i = 0; i < first.joint_constraints.size(); ++i)
+  for (const moveit_msgs::JointConstraint& jc_first : first.joint_constraints)
   {
     bool add = true;
-    for (std::size_t j = 0; j < second.joint_constraints.size(); ++j)
-      if (second.joint_constraints[j].joint_name == first.joint_constraints[i].joint_name)
+    for (const moveit_msgs::JointConstraint& jc_second : second.joint_constraints)
+      if (jc_second.joint_name == jc_first.joint_name)
       {
         add = false;
         // now we merge
         moveit_msgs::JointConstraint m;
-        const moveit_msgs::JointConstraint& a = first.joint_constraints[i];
-        const moveit_msgs::JointConstraint& b = second.joint_constraints[j];
+        const moveit_msgs::JointConstraint& a = jc_first;
+        const moveit_msgs::JointConstraint& b = jc_second;
         double low = std::max(a.position - a.tolerance_below, b.position - b.tolerance_below);
         double high = std::min(a.position + a.tolerance_above, b.position + b.tolerance_above);
         if (low > high)
@@ -81,35 +81,35 @@ moveit_msgs::Constraints mergeConstraints(const moveit_msgs::Constraints& first,
         break;
       }
     if (add)
-      r.joint_constraints.push_back(first.joint_constraints[i]);
+      r.joint_constraints.push_back(jc_first);
   }
 
   // add all joint constraints that are in second but not in first
-  for (std::size_t i = 0; i < second.joint_constraints.size(); ++i)
+  for (const moveit_msgs::JointConstraint& jc_second : second.joint_constraints)
   {
     bool add = true;
-    for (std::size_t j = 0; j < first.joint_constraints.size(); ++j)
-      if (second.joint_constraints[i].joint_name == first.joint_constraints[j].joint_name)
+    for (const moveit_msgs::JointConstraint& jc_first : first.joint_constraints)
+      if (jc_second.joint_name == jc_first.joint_name)
       {
         add = false;
         break;
       }
     if (add)
-      r.joint_constraints.push_back(second.joint_constraints[i]);
+      r.joint_constraints.push_back(jc_second);
   }
 
   // merge rest of constraints
   r.position_constraints = first.position_constraints;
-  for (std::size_t i = 0; i < second.position_constraints.size(); ++i)
-    r.position_constraints.push_back(second.position_constraints[i]);
+  for (const moveit_msgs::PositionConstraint& position_constraint : second.position_constraints)
+    r.position_constraints.push_back(position_constraint);
 
   r.orientation_constraints = first.orientation_constraints;
-  for (std::size_t i = 0; i < second.orientation_constraints.size(); ++i)
-    r.orientation_constraints.push_back(second.orientation_constraints[i]);
+  for (const moveit_msgs::OrientationConstraint& orientation_constraint : second.orientation_constraints)
+    r.orientation_constraints.push_back(orientation_constraint);
 
   r.visibility_constraints = first.visibility_constraints;
-  for (std::size_t i = 0; i < second.visibility_constraints.size(); ++i)
-    r.visibility_constraints.push_back(second.visibility_constraints[i]);
+  for (const moveit_msgs::VisibilityConstraint& visibility_constraint : second.visibility_constraints)
+    r.visibility_constraints.push_back(visibility_constraint);
 
   return r;
 }
@@ -484,7 +484,7 @@ static bool collectConstraints(XmlRpc::XmlRpcValue& params, moveit_msgs::Constra
     return false;
   }
 
-  for (int i = 0; i < params.size(); ++i)
+  for (int i = 0; i < params.size(); ++i)  // NOLINT(modernize-loop-convert)
   {
     if (!params[i].hasMember("type"))
     {
@@ -528,3 +528,56 @@ bool constructConstraints(XmlRpc::XmlRpcValue& params, moveit_msgs::Constraints&
   return collectConstraints(params["constraints"], constraints);
 }
 }  // namespace kinematic_constraints
+
+bool kinematic_constraints::resolveConstraintFrames(const robot_state::RobotState& state,
+                                                    moveit_msgs::Constraints& constraints)
+{
+  for (auto& c : constraints.position_constraints)
+  {
+    bool frame_found;
+    const moveit::core::LinkModel* robot_link;
+    const Eigen::Isometry3d& transform = state.getFrameInfo(c.link_name, robot_link, frame_found);
+    if (!frame_found)
+      return false;
+
+    // If the frame of the constraint is not part of the robot link model (but is an
+    // attached body or subframe instead), the constraint needs to be expressed in
+    // the frame of a robot link.
+    if (c.link_name != robot_link->getName())
+    {
+      Eigen::Vector3d pos_in_link_frame,
+          pos_in_original_frame(c.target_point_offset.x, c.target_point_offset.y, c.target_point_offset.z);
+
+      pos_in_link_frame = transform * pos_in_original_frame;
+      c.link_name = robot_link->getName();
+      c.target_point_offset.x = pos_in_link_frame[0];
+      c.target_point_offset.y = pos_in_link_frame[1];
+      c.target_point_offset.z = pos_in_link_frame[2];
+    }
+  }
+  for (auto& c : constraints.orientation_constraints)
+  {
+    bool frame_found;
+    const moveit::core::LinkModel* robot_link;
+    const Eigen::Isometry3d& transform = state.getFrameInfo(c.link_name, robot_link, frame_found);
+    if (!frame_found)
+      return false;
+
+    // If the frame of the constraint is not part of the robot link model (but is an
+    // attached body or subframe instead), the constraint needs to be expressed in
+    // the frame of a robot link.
+    if (c.link_name != robot_link->getName())
+    {
+      Eigen::Quaterniond q_body_to_link(transform.inverse().rotation());
+      Eigen::Quaterniond q_target(c.orientation.w, c.orientation.x, c.orientation.y, c.orientation.z);
+      Eigen::Quaterniond q_in_link = q_body_to_link * q_target;
+
+      c.link_name = robot_link->getName();
+      c.orientation.x = q_in_link.x();
+      c.orientation.y = q_in_link.y();
+      c.orientation.z = q_in_link.z();
+      c.orientation.w = q_in_link.w();
+    }
+  }
+  return true;
+}

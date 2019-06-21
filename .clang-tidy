@@ -6,11 +6,13 @@ Checks:          '-*,
                   modernize-use-nullptr,
                   modernize-use-default,
                   modernize-use-override,
+                  modernize-loop-convert,
                   readability-named-parameter,
                   readability-redundant-smartptr-get,
                   readability-redundant-string-cstr,
                   readability-simplify-boolean-expr,
                   readability-container-size-empty,
+                  readability-identifier-naming,
                   '
 HeaderFilterRegex: ''
 AnalyzeTemporaryDtors: false

@@ -375,6 +375,7 @@ bool IKFastKinematicsPlugin::computeRelativeTransform(const std::string& from, c
 {
   RobotStatePtr robot_state;
   robot_state.reset(new RobotState(robot_model_));
+  robot_state->setToDefaultValues();
 
   auto* from_link = robot_state->getLinkModel(from);
   auto* to_link = robot_state->getLinkModel(to);
@@ -416,7 +417,13 @@ bool IKFastKinematicsPlugin::initialize(const moveit::core::RobotModel& robot_mo
   // base_frame_ and IKFAST_TIP_FRAME_ the tip_frame_ and transform to the input pose accordingly
   if (!computeRelativeTransform(tip_frames_[0], IKFAST_TIP_FRAME_, group_tip_to_chain_tip_, tip_transform_required_) ||
       !computeRelativeTransform(IKFAST_BASE_FRAME_, base_frame_, chain_base_to_group_base_, base_transform_required_))
+  {
+    if (!computeRelativeTransform(tip_frames_[0], IKFAST_TIP_FRAME_, group_tip_to_chain_tip_, tip_transform_required_))
+      ROS_ERROR_NAMED(name_, "Failed to compute transform between IKFAST_TIP_FRAME_ and tip_frames_[0]");
+    if (!computeRelativeTransform(IKFAST_BASE_FRAME_, base_frame_, chain_base_to_group_base_, base_transform_required_))
+      ROS_ERROR_NAMED(name_, "Failed to compute transform between base_frame_ and IKFAST_BASE_FRAME_");
     return false;
+  }
 
   // IKFast56/61
   fillFreeParams(GetNumFreeParameters(), GetFreeParameters());

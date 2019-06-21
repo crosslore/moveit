@@ -299,10 +299,10 @@ public:
     req.planner_config = planner_id;
     req.group = group;
     req.replace = replace;
-    for (std::map<std::string, std::string>::const_iterator it = params.begin(), end = params.end(); it != end; ++it)
+    for (const std::pair<const std::string, std::string>& param : params)
     {
-      req.params.keys.push_back(it->first);
-      req.params.values.push_back(it->second);
+      req.params.keys.push_back(param.first);
+      req.params.values.push_back(param.second);
     }
     set_params_service_.call(req, res);
   }
@@ -345,7 +345,7 @@ public:
     max_acceleration_scaling_factor_ = max_acceleration_scaling_factor;
   }
 
-  robot_state::RobotState& getJointStateTarget()
+  robot_state::RobotState& getTargetRobotState()
   {
     return *joint_state_target_;
   }
@@ -385,8 +385,8 @@ public:
       {
         setTargetType(JOINT);
         c->enforceBounds();
-        getJointStateTarget() = *c;
-        if (!getJointStateTarget().satisfiesBounds(getGoalJointTolerance()))
+        getTargetRobotState() = *c;
+        if (!getTargetRobotState().satisfiesBounds(getGoalJointTolerance()))
           return false;
       }
       else
@@ -398,17 +398,18 @@ public:
 
       // if no frame transforms are needed, call IK directly
       if (frame.empty() || moveit::core::Transforms::sameFrame(frame, getRobotModel()->getModelFrame()))
-        return getJointStateTarget().setFromIK(getJointModelGroup(), eef_pose, eef, 0.0,
+        return getTargetRobotState().setFromIK(getJointModelGroup(), eef_pose, eef, 0.0,
                                                moveit::core::GroupStateValidityCallbackFn(), o);
       else
       {
-        if (c->knowsFrameTransform(frame))
+        // transform the pose into the model frame, then do IK
+        bool frame_found;
+        const Eigen::Isometry3d& t = getTargetRobotState().getFrameTransform(frame, &frame_found);
+        if (frame_found)
         {
-          // transform the pose first if possible, then do IK
-          const Eigen::Isometry3d& t = getJointStateTarget().getFrameTransform(frame);
           Eigen::Isometry3d p;
           tf2::fromMsg(eef_pose, p);
-          return getJointStateTarget().setFromIK(getJointModelGroup(), t * p, eef, 0.0,
+          return getTargetRobotState().setFromIK(getJointModelGroup(), t * p, eef, 0.0,
                                                  moveit::core::GroupStateValidityCallbackFn(), o);
         }
         else
@@ -449,9 +450,9 @@ public:
     {
       const std::vector<std::string>& possible_eefs =
           getRobotModel()->getJointModelGroup(opt_.group_name_)->getAttachedEndEffectorNames();
-      for (std::size_t i = 0; i < possible_eefs.size(); ++i)
-        if (getRobotModel()->getEndEffector(possible_eefs[i])->hasLinkModel(end_effector_link_))
-          return possible_eefs[i];
+      for (const std::string& possible_eef : possible_eefs)
+        if (getRobotModel()->getEndEffector(possible_eef)->hasLinkModel(end_effector_link_))
+          return possible_eef;
     }
     static std::string empty;
     return empty;
@@ -470,8 +471,8 @@ public:
       pose_targets_[eef] = poses;
       // make sure we don't store an actual stamp, since that will become stale can potentially cause tf errors
       std::vector<geometry_msgs::PoseStamped>& stored_poses = pose_targets_[eef];
-      for (std::size_t i = 0; i < stored_poses.size(); ++i)
-        stored_poses[i].header.stamp = ros::Time(0);
+      for (geometry_msgs::PoseStamped& stored_pose : stored_poses)
+        stored_pose.header.stamp = ros::Time(0);
     }
     return true;
   }
@@ -493,9 +494,9 @@ public:
         return jt->second.at(0);
 
     // or return an error
-    static const geometry_msgs::PoseStamped unknown;
+    static const geometry_msgs::PoseStamped UNKNOWN;
     ROS_ERROR_NAMED("move_group_interface", "Pose for end-effector '%s' not known.", eef.c_str());
-    return unknown;
+    return UNKNOWN;
   }
 
   const std::vector<geometry_msgs::PoseStamped>& getPoseTargets(const std::string& end_effector_link) const
@@ -508,9 +509,9 @@ public:
         return jt->second;
 
     // or return an error
-    static const std::vector<geometry_msgs::PoseStamped> empty;
+    static const std::vector<geometry_msgs::PoseStamped> EMPTY;
     ROS_ERROR_NAMED("move_group_interface", "Poses for end-effector '%s' are not known.", eef.c_str());
-    return empty;
+    return EMPTY;
   }
 
   void setPoseReferenceFrame(const std::string& pose_reference_frame)
@@ -581,7 +582,7 @@ public:
                         bool plan_only = false)
   {
     std::vector<moveit_msgs::PlaceLocation> locations;
-    for (std::size_t i = 0; i < poses.size(); ++i)
+    for (const geometry_msgs::PoseStamped& pose : poses)
     {
       moveit_msgs::PlaceLocation location;
       location.pre_place_approach.direction.vector.z = -1.0;
@@ -595,7 +596,7 @@ public:
       location.post_place_retreat.desired_distance = 0.2;
       // location.post_place_posture is filled by the pick&place lib with the getDetachPosture from the AttachedBody
 
-      location.place_pose = poses[i];
+      location.place_pose = pose;
       locations.push_back(location);
     }
     ROS_DEBUG_NAMED("move_group_interface", "Move group interface has %u place locations",
@@ -936,9 +937,9 @@ public:
     {
       // we only want to detach objects for this group
       const std::vector<std::string>& lnames = joint_model_group_->getLinkModelNames();
-      for (std::size_t i = 0; i < lnames.size(); ++i)
+      for (const std::string& lname : lnames)
       {
-        aco.link_name = lnames[i];
+        aco.link_name = lname;
         attached_object_publisher_.publish(aco);
       }
     }
@@ -1030,7 +1031,7 @@ public:
     {
       request.goal_constraints.resize(1);
       request.goal_constraints[0] = kinematic_constraints::constructGoalConstraints(
-          getJointStateTarget(), joint_model_group_, goal_joint_tolerance_);
+          getTargetRobotState(), joint_model_group_, goal_joint_tolerance_);
     }
     else if (active_target_ == POSE || active_target_ == POSITION || active_target_ == ORIENTATION)
     {
@@ -1549,7 +1550,7 @@ void moveit::planning_interface::MoveGroupInterface::setStartStateToCurrentState
 
 void moveit::planning_interface::MoveGroupInterface::setRandomTarget()
 {
-  impl_->getJointStateTarget().setToRandomPositions();
+  impl_->getTargetRobotState().setToRandomPositions();
   impl_->setTargetType(JOINT);
 }
 
@@ -1593,7 +1594,7 @@ bool moveit::planning_interface::MoveGroupInterface::setNamedTarget(const std::s
   }
   else
   {
-    if (impl_->getJointStateTarget().setToDefaultValues(impl_->getJointModelGroup(), name))
+    if (impl_->getTargetRobotState().setToDefaultValues(impl_->getJointModelGroup(), name))
     {
       impl_->setTargetType(JOINT);
       return true;
@@ -1603,28 +1604,64 @@ bool moveit::planning_interface::MoveGroupInterface::setNamedTarget(const std::s
   }
 }
 
+void moveit::planning_interface::MoveGroupInterface::getJointValueTarget(
+    std::vector<double>& group_variable_values) const
+{
+  impl_->getTargetRobotState().copyJointGroupPositions(impl_->getJointModelGroup(), group_variable_values);
+}
+
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const std::vector<double>& joint_values)
 {
   if (joint_values.size() != impl_->getJointModelGroup()->getVariableCount())
     return false;
   impl_->setTargetType(JOINT);
-  impl_->getJointStateTarget().setJointGroupPositions(impl_->getJointModelGroup(), joint_values);
-  return impl_->getJointStateTarget().satisfiesBounds(impl_->getJointModelGroup(), impl_->getGoalJointTolerance());
+  impl_->getTargetRobotState().setJointGroupPositions(impl_->getJointModelGroup(), joint_values);
+  return impl_->getTargetRobotState().satisfiesBounds(impl_->getJointModelGroup(), impl_->getGoalJointTolerance());
 }
 
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(
-    const std::map<std::string, double>& joint_values)
+    const std::map<std::string, double>& variable_values)
 {
+  const auto& allowed = impl_->getJointModelGroup()->getVariableNames();
+  for (const auto& pair : variable_values)
+  {
+    if (std::find(allowed.begin(), allowed.end(), pair.first) == allowed.end())
+    {
+      ROS_ERROR_STREAM("joint variable " << pair.first << " is not part of group "
+                                         << impl_->getJointModelGroup()->getName());
+      return false;
+    }
+  }
+
   impl_->setTargetType(JOINT);
-  impl_->getJointStateTarget().setVariablePositions(joint_values);
-  return impl_->getJointStateTarget().satisfiesBounds(impl_->getGoalJointTolerance());
+  impl_->getTargetRobotState().setVariablePositions(variable_values);
+  return impl_->getTargetRobotState().satisfiesBounds(impl_->getGoalJointTolerance());
+}
+
+bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const std::vector<std::string>& variable_names,
+                                                                         const std::vector<double>& variable_values)
+{
+  const auto& allowed = impl_->getJointModelGroup()->getVariableNames();
+  for (const auto& variable_name : variable_names)
+  {
+    if (std::find(allowed.begin(), allowed.end(), variable_name) == allowed.end())
+    {
+      ROS_ERROR_STREAM("joint variable " << variable_name << " is not part of group "
+                                         << impl_->getJointModelGroup()->getName());
+      return false;
+    }
+  }
+
+  impl_->setTargetType(JOINT);
+  impl_->getTargetRobotState().setVariablePositions(variable_names, variable_values);
+  return impl_->getTargetRobotState().satisfiesBounds(impl_->getGoalJointTolerance());
 }
 
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const robot_state::RobotState& rstate)
 {
   impl_->setTargetType(JOINT);
-  impl_->getJointStateTarget() = rstate;
-  return impl_->getJointStateTarget().satisfiesBounds(impl_->getGoalJointTolerance());
+  impl_->getTargetRobotState() = rstate;
+  return impl_->getTargetRobotState().satisfiesBounds(impl_->getGoalJointTolerance());
 }
 
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const std::string& joint_name, double value)
@@ -1637,20 +1674,20 @@ bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const s
                                                                          const std::vector<double>& values)
 {
   impl_->setTargetType(JOINT);
-  const robot_model::JointModel* jm = impl_->getJointStateTarget().getJointModel(joint_name);
+  const robot_model::JointModel* jm = impl_->getJointModelGroup()->getJointModel(joint_name);
   if (jm && jm->getVariableCount() == values.size())
   {
-    impl_->getJointStateTarget().setJointPositions(jm, values);
-    return impl_->getJointStateTarget().satisfiesBounds(jm, impl_->getGoalJointTolerance());
+    impl_->getTargetRobotState().setJointPositions(jm, values);
+    return impl_->getTargetRobotState().satisfiesBounds(jm, impl_->getGoalJointTolerance());
   }
+
+  ROS_ERROR_STREAM("joint " << joint_name << " is not part of group " << impl_->getJointModelGroup()->getName());
   return false;
 }
 
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const sensor_msgs::JointState& state)
 {
-  impl_->setTargetType(JOINT);
-  impl_->getJointStateTarget().setVariableValues(state);
-  return impl_->getJointStateTarget().satisfiesBounds(impl_->getGoalJointTolerance());
+  return setJointValueTarget(state.name, state.position);
 }
 
 bool moveit::planning_interface::MoveGroupInterface::setJointValueTarget(const geometry_msgs::Pose& eef_pose,
@@ -1693,7 +1730,12 @@ bool moveit::planning_interface::MoveGroupInterface::setApproximateJointValueTar
 
 const robot_state::RobotState& moveit::planning_interface::MoveGroupInterface::getJointValueTarget() const
 {
-  return impl_->getJointStateTarget();
+  return impl_->getTargetRobotState();
+}
+
+const robot_state::RobotState& moveit::planning_interface::MoveGroupInterface::getTargetRobotState() const
+{
+  return impl_->getTargetRobotState();
 }
 
 const std::string& moveit::planning_interface::MoveGroupInterface::getEndEffectorLink() const
@@ -1977,7 +2019,7 @@ std::vector<double> moveit::planning_interface::MoveGroupInterface::getCurrentJo
 std::vector<double> moveit::planning_interface::MoveGroupInterface::getRandomJointValues()
 {
   std::vector<double> r;
-  impl_->getJointModelGroup()->getVariableRandomPositions(impl_->getJointStateTarget().getRandomNumberGenerator(), r);
+  impl_->getJointModelGroup()->getVariableRandomPositions(impl_->getTargetRobotState().getRandomNumberGenerator(), r);
   return r;
 }
 

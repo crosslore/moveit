@@ -201,14 +201,14 @@ QWidget* EndEffectorsWidget::createEditWidget()
   controls_layout->addWidget(spacer);
 
   // Save
-  QPushButton* btn_save_ = new QPushButton("&Save", this);
+  btn_save_ = new QPushButton("&Save", this);
   btn_save_->setMaximumWidth(200);
   connect(btn_save_, SIGNAL(clicked()), this, SLOT(doneEditing()));
   controls_layout->addWidget(btn_save_);
   controls_layout->setAlignment(btn_save_, Qt::AlignRight);
 
   // Cancel
-  QPushButton* btn_cancel_ = new QPushButton("&Cancel", this);
+  btn_cancel_ = new QPushButton("&Cancel", this);
   btn_cancel_->setMaximumWidth(200);
   connect(btn_cancel_, SIGNAL(clicked()), this, SLOT(cancelEditing()));
   controls_layout->addWidget(btn_cancel_);
@@ -365,11 +365,10 @@ void EndEffectorsWidget::loadGroupsComboBox()
   parent_group_name_field_->addItem("");  // optional setting
 
   // Add all group names to combo box
-  for (std::vector<srdf::Model::Group>::iterator group_it = config_data_->srdf_->groups_.begin();
-       group_it != config_data_->srdf_->groups_.end(); ++group_it)
+  for (srdf::Model::Group& group : config_data_->srdf_->groups_)
   {
-    group_name_field_->addItem(group_it->name_.c_str());
-    parent_group_name_field_->addItem(group_it->name_.c_str());
+    group_name_field_->addItem(group.name_.c_str());
+    parent_group_name_field_->addItem(group.name_.c_str());
   }
 }
 
@@ -400,13 +399,12 @@ srdf::Model::EndEffector* EndEffectorsWidget::findEffectorByName(const std::stri
   // Find the group state we are editing based on the effector name
   srdf::Model::EndEffector* searched_group = nullptr;  // used for holding our search results
 
-  for (std::vector<srdf::Model::EndEffector>::iterator effector_it = config_data_->srdf_->end_effectors_.begin();
-       effector_it != config_data_->srdf_->end_effectors_.end(); ++effector_it)
+  for (srdf::Model::EndEffector& end_effector : config_data_->srdf_->end_effectors_)
   {
-    if (effector_it->name_ == name)  // string match
+    if (end_effector.name_ == name)  // string match
     {
-      searched_group = &(*effector_it);  // convert to pointer from iterator
-      break;                             // we are done searching
+      searched_group = &end_effector;  // convert to pointer from iterator
+      break;                           // we are done searching
     }
   }
 
@@ -547,11 +545,11 @@ void EndEffectorsWidget::doneEditing()
   config_data_->changes |= MoveItConfigData::END_EFFECTORS;
 
   // Save the new effector name or create the new effector ----------------------------
-  bool isNew = false;
+  bool is_new = false;
 
   if (searched_data == nullptr)  // create new
   {
-    isNew = true;
+    is_new = true;
 
     searched_data = new srdf::Model::EndEffector();
   }
@@ -563,7 +561,7 @@ void EndEffectorsWidget::doneEditing()
   searched_data->parent_group_ = parent_group_name_field_->currentText().toStdString();
 
   // Insert new effectors into group state vector --------------------------
-  if (isNew)
+  if (is_new)
   {
     config_data_->srdf_->end_effectors_.push_back(*searched_data);
   }

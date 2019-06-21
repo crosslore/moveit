@@ -210,8 +210,8 @@ void MotionPlanningFrame::approximateIKChanged(int state)
 void MotionPlanningFrame::setItemSelectionInList(const std::string& item_name, bool selection, QListWidget* list)
 {
   QList<QListWidgetItem*> found_items = list->findItems(QString(item_name.c_str()), Qt::MatchExactly);
-  for (int i = 0; i < found_items.size(); ++i)
-    found_items[i]->setSelected(selection);
+  for (QListWidgetItem* found_item : found_items)
+    found_item->setSelected(selection);
 }
 
 void MotionPlanningFrame::allowExternalProgramCommunication(bool enable)
@@ -292,10 +292,10 @@ void MotionPlanningFrame::fillStateSelectionOptions()
     {
       ui_->start_state_combo_box->insertSeparator(ui_->start_state_combo_box->count());
       ui_->goal_state_combo_box->insertSeparator(ui_->goal_state_combo_box->count());
-      for (std::size_t i = 0; i < known_states.size(); ++i)
+      for (const std::string& known_state : known_states)
       {
-        ui_->start_state_combo_box->addItem(QString::fromStdString(known_states[i]));
-        ui_->goal_state_combo_box->addItem(QString::fromStdString(known_states[i]));
+        ui_->start_state_combo_box->addItem(QString::fromStdString(known_state));
+        ui_->goal_state_combo_box->addItem(QString::fromStdString(known_state));
       }
     }
 
@@ -352,8 +352,8 @@ void MotionPlanningFrame::changePlanningGroupHelper()
     {
       move_group_->allowLooking(ui_->allow_looking->isChecked());
       move_group_->allowReplanning(ui_->allow_replanning->isChecked());
-      bool hasUniqueEndeffector = !move_group_->getEndEffectorLink().empty();
-      planning_display_->addMainLoopJob([=]() { ui_->use_cartesian_path->setEnabled(hasUniqueEndeffector); });
+      bool has_unique_endeffector = !move_group_->getEndEffectorLink().empty();
+      planning_display_->addMainLoopJob([=]() { ui_->use_cartesian_path->setEnabled(has_unique_endeffector); });
       moveit_msgs::PlannerInterfaceDescription desc;
       if (move_group_->getInterfaceDescription(desc))
         planning_display_->addMainLoopJob(boost::bind(&MotionPlanningFrame::populatePlannersList, this, desc));
@@ -416,12 +416,12 @@ void MotionPlanningFrame::importResource(const std::string& path)
       // If the object already exists, ask the user whether to overwrite or rename
       if (planning_display_->getPlanningSceneRO()->getWorld()->hasObject(name))
       {
-        QMessageBox msgBox;
-        msgBox.setText("There exists another object with the same name.");
-        msgBox.setInformativeText("Would you like to overwrite it?");
-        msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-        msgBox.setDefaultButton(QMessageBox::No);
-        int ret = msgBox.exec();
+        QMessageBox msg_box;
+        msg_box.setText("There exists another object with the same name.");
+        msg_box.setInformativeText("Would you like to overwrite it?");
+        msg_box.setStandardButtons(QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+        msg_box.setDefaultButton(QMessageBox::No);
+        int ret = msg_box.exec();
 
         switch (ret)
         {

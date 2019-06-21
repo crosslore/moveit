@@ -1,4 +1,4 @@
-# moveit/moveit:melodic-ci
+# moveit/moveit:master-ci
 # Sets up a base image to use for running Continuous Integration on Travis
 
 FROM ros:melodic-ros-base
@@ -6,9 +6,8 @@ MAINTAINER Dave Coleman dave@picknik.ai
 
 ENV TERM xterm
 
-# Setup catkin workspace
-ENV CATKIN_WS=/root/ws_moveit
-WORKDIR $CATKIN_WS
+# Setup (temporary) ROS workspace
+WORKDIR /root/ws_moveit
 
 # Commands are combined in single RUN statement with "apt/lists" folder removal to reduce image size
 # https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#minimize-the-number-of-layers
@@ -17,7 +16,7 @@ RUN \
     cd src && \
     #
     # Download moveit source, so that we can get necessary dependencies
-    wstool init --shallow . https://raw.githubusercontent.com/ros-planning/moveit/${ROS_DISTRO}-devel/moveit.rosinstall && \
+    wstool init --shallow . https://raw.githubusercontent.com/ros-planning/moveit/master/moveit.rosinstall && \
     #
     # Update apt package list as previous containers clear the cache
     apt-get -qq update && \
